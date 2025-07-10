@@ -6,21 +6,29 @@ import json
 ASSET_FILE = "assets.xlsx"
 CREDENTIALS_FILE = "credentials.json"
 
-PAUSE_BETWEEN_ASSETS = 2
+PAUSE_BETWEEN_ASSETS = 0
 INVITE_RETRY_COUNT = 8
-INVITE_RETRY_DELAY = 2
+INVITE_RETRY_DELAY = 1
 
 def print_separator():
     print("—" * 52)
 
+def get_all_paginated_results(url, headers):
+    results = []
+    while url:
+        r = requests.get(url, headers=headers)
+        if r.status_code != 200:
+            print(f"⚠️ Error fetching paginated results: {r.status_code}")
+            break
+        data = r.json()
+        results.extend(data.get("results", []))
+        url = data.get("next")
+    return results
+
 def asset_already_transferred(asset_uid, sender_username, receiver_username, sender_api_key, KOBO_BASE_URL):
-    url = f"{KOBO_BASE_URL}/api/v2/project-ownership/invites/"
+    url = f"{KOBO_BASE_URL}/api/v2/project-ownership/invites/?page_size=500"
     headers = {"Authorization": f"Token {sender_api_key}"}
-    response = requests.get(url, headers=headers)
-    if response.status_code != 200:
-        print(f"⚠️ Could not check transfer history for {asset_uid}")
-        return False
-    invites = response.json().get('results', [])
+    invites = get_all_paginated_results(url, headers)
     sender_url = f"{KOBO_BASE_URL}/api/v2/users/{sender_username}/"
     recipient_url = f"{KOBO_BASE_URL}/api/v2/users/{receiver_username}/"
     transfer_history = []
@@ -72,13 +80,9 @@ def create_invite(asset_uid, recipient_username, sender_api_key, KOBO_BASE_URL):
     return False, r.text
 
 def get_pending_invite_id(asset_uid, sender_username, receiver_api_key, KOBO_BASE_URL):
-    url = f"{KOBO_BASE_URL}/api/v2/project-ownership/invites/"
+    url = f"{KOBO_BASE_URL}/api/v2/project-ownership/invites/?page_size=500"
     headers = {"Authorization": f"Token {receiver_api_key}"}
-    r = requests.get(url, headers=headers)
-    if r.status_code != 200:
-        print(f"  ❌ Cannot check for pending invites!")
-        return None
-    invites = r.json().get('results', [])
+    invites = get_all_paginated_results(url, headers)
     sender_url = f"{KOBO_BASE_URL}/api/v2/users/{sender_username}/"
     for invite in invites:
         if invite.get('sender') == sender_url and invite.get('status') == "pending":
